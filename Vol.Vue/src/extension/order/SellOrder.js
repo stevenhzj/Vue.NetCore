@@ -13,6 +13,8 @@
 //9、在子组件gridHeader、gridBody、gridFooter、modelHeader、modelBody、modelFooter的方法中调用并获得父组件
 // this.$emit("parentCall", $vue => {}) //$vue为父组件对象，具体使用参考order->GridHeaderExtend.vue文件
 
+//10、子父件传参除8、9方式，另可使用已封装的vuex,使用方式:this.$store.getters.data().xxx = this;使用实例：App_News.js
+
 //此处的下面的属性与方法都是对基础业务代码的扩展，如果不需要扩展则忽略对应的方法也不要写在下面
 //serviceFilter.js
 //所的文件都最终会合并到ViewGrid.vue文件中
@@ -99,10 +101,14 @@ let extension = {
             })
         },
         mounted() {
-          
-           // this.$Notice.success({ title: '执行mounted方法' });
+
+            // this.$Notice.success({ title: '执行mounted方法' });
         },
         onInit() {
+            //设置主表合计
+            this.summary = true;
+            //设置明细表合计
+            this.detailOptions.summary = true;
             //表格设置为单选
             // this.single=true;
             // this.detailOptions.single=true;
@@ -130,12 +136,24 @@ let extension = {
             })
 
             //动态设置弹出框table的高度
-            this.detailOptions.height = 110;
+            this.detailOptions.height = 160;
             //动态设置查询界面table高度
-            this.tableHeight = 200;;
+            this.tableMaxHeight = 220;;
             this.$Notice.success({ title: 'create方法执行时,你可以此处编写业务逻辑' });
         },
         onInited() {
+            //设置主表求字段，后台需要实现SummaryExpress方法
+            this.columns.forEach(x => {
+                if (x.field == 'Qty') {
+                    x.summary = true;
+                }
+            })
+            //设置明细表求字和段，后台需要实现GetDetailSummary方法
+            this.detailOptions.columns.forEach(x => {
+                if (x.field == 'Weight' || x.field == 'Qty') {
+                    x.summary = true;
+                }
+            })
             //   this.$Notice.success({ title: 'create方法执行后', desc: '你可以SellOrder.js中编写业务逻辑,其他方法同样适用' });
         },
         searchBefore(param) { //查询ViewGird表数据前,param查询参数
@@ -173,7 +191,14 @@ let extension = {
             return true;
         },
         addBefore(formData) { //新建保存前formData为对象，包括明细表
-
+            //formData格式：
+            // {
+            //     mainData: { 主表字段1: 'x1', 主表字段2: 'x2' },
+            //     detailData: [{ 明细表字段1: d1 }],
+            //     delKeys: null //删除明细表行数据的id
+            // }
+            //如果需要同时提交其他数据到后台，请设置formData.extra=xxxx
+            //后台在表xxxxService.cs中重写Add方法即可从saveDataModel参数中拿到extra提交的对象
             this.$Notice.success({ title: this.detailOptions.cnName + '新建前：', desc: '提前的数据：' + JSON.stringify(formData) });
             return true;
         },
@@ -182,6 +207,15 @@ let extension = {
             return true;
         },
         updateBefore(formData) { //编辑保存前formData为对象，包括明细表、删除行的Id
+           //formData格式：
+            // {
+            //     mainData: { 主表字段1: 'x1', 主表字段2: 'x2' },
+            //     detailData: [{ 明细表字段1: d1 }],
+            //     delKeys: null //删除明细表行数据的id
+            // }
+            //如果需要同时提交其他数据到后台，请设置formData.extra=xxxx
+            //后台在表xxxxService.cs中重写Update方法即可从saveDataModel参数中拿到extra提交的对象
+
             this.$Notice.success({ title: this.detailOptions.cnName + '编辑前：', desc: '提前的数据：' + JSON.stringify(formData) });
             //获取扩展的modelFooter属性text
             console.log(this.$refs.modelFooter.text)

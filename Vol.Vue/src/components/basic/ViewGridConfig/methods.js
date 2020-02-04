@@ -287,6 +287,7 @@ let methods = {
         }
         this.resetEditForm(objKey);
         //重置之后
+
         if (!this[isEdit ? 'resetUpdateFormAfter' : 'resetAddFormAfter']()) {
             return;
         }
@@ -306,6 +307,9 @@ let methods = {
         try {
             formData.forEach(item => {
                 item.forEach(x => {
+                    if (this.keyValueType.hasOwnProperty('_b_' + x.field)) {
+                        return true;
+                    }
                     let data;
                     if (x.type == 'switch') {
                         this.keyValueType[x.field] = 1;
@@ -320,8 +324,8 @@ let methods = {
                         }
                     }
                     if (data && data.length > 0 && !this.keyValueType.hasOwnProperty(x.field)) {
-
                         this.keyValueType[x.field] = data[0].key;
+                        this.keyValueType['_b_' + x.field] = x.type;
                     }
                 })
             })
@@ -341,14 +345,18 @@ let methods = {
             : this.editFormFileds;
         //获取数据源的data类型，否则如果数据源data的key是数字，重置的值是字符串就无法绑定值
         if (!this.keyValueType._dinit) {
-            this.getKeyValueType(this.searchFormOptions);
             this.getKeyValueType(this.editFormOptions);
+            this.getKeyValueType(this.searchFormOptions);
             this.keyValueType._dinit = true;
         }
         for (const key in form) {
             if (sourceObj.hasOwnProperty(key)) {
                 let newVal = sourceObj[key];
-                if (this.keyValueType.hasOwnProperty(key)
+                if (this.keyValueType['_b_' + key] == 'selectList') {
+                    if (newVal != "" && newVal != undefined && typeof newVal == 'string') {
+                        newVal = newVal.split(',');
+                    }
+                } else if (this.keyValueType.hasOwnProperty(key)
                     && typeof (this.keyValueType[key]) == 'number'
                     && newVal * 1 == newVal) {
                     newVal = newVal * 1;
@@ -398,6 +406,12 @@ let methods = {
         } else {
             editFormFileds = this.editFormFileds;
         }
+        //将数组转换成string
+        for (const key in editFormFileds) {
+            if (editFormFileds[key] instanceof Array) {
+                editFormFileds[key] = editFormFileds[key].join(',');
+            }
+        }
 
         let formData = {
             mainData: editFormFileds,
@@ -426,8 +440,8 @@ let methods = {
             } else {
                 if (!this.updateAfter(x)) return;
             }
-            if (!x.status) return this.$Message.error(x.message);
-            this.$Message.info(x.message);
+            if (!x.status) return this.$error(x.message);
+            this.$success(x.message);
             //如果保存成功后需要关闭编辑框，直接返回不处理后面
             if (this.boxOptions.saveClose) {
                 this.boxModel = false;
@@ -449,7 +463,6 @@ let methods = {
             }
             this.resetEditForm(resultRow.data);
             // console.log(resultRow);
-            //重置数据,待测试
             if (this.hasDetail) {
                 this.detailOptions.delKeys = [];
                 if (resultRow.list) {
@@ -462,12 +475,12 @@ let methods = {
     del() {
         //删除数据
         let rows = this.$refs.table.getSelected();
-        if (rows.length == 0) return this.$message.error("请选择要删除的行!");
+        if (rows.length == 0) return this.$error("请选择要删除的行!");
         let delKeys = rows.map(x => {
             return x[this.table.key];
         });
         if (!delKeys || delKeys.length == 0)
-            return this.$message.error("没有获取要删除的行数据!");
+            return this.$error("没有获取要删除的行数据!");
         //删除前
         if (!this.delBefore(delKeys, rows)) {
             return;
@@ -482,8 +495,8 @@ let methods = {
                 tigger = true;
                 let url = this.getUrl(this.const.DEL);
                 this.http.post(url, delKeys, "正在删除数据....").then(x => {
-                    if (!x.status) return this.$Message.error(x.message);
-                    this.$Message.info(x.message);
+                    if (!x.status) return this.$error(x.message);
+                    this.$success(x.message);
                     //删除后
                     if (!this.delAfter(x)) {
                         return;
@@ -493,7 +506,6 @@ let methods = {
             } //, onCancel: () => {}
         });
     },
-
     initBox() { //初始化新建、编辑的弹出框
         this.modelOpenBefore(this.currentRow);
         if (!this.boxInit) {
@@ -503,8 +515,21 @@ let methods = {
         }
     },
     setEditForm(row) {
+        // if (this.remoteColumns.length == 0 || !rows || rows.length == 0) return;
+        let remoteColumns = this.$refs.table.remoteColumns;
+        remoteColumns.forEach(column => {
+            this.editFormOptions.forEach(option => {
+                option.forEach(x => {
+                    if (x.field == column.field) {
+                        x.data.data = Object.assign([], x.data, column.bind.data);
+                    }
+                })
+            });
+        });
+        this.editFormFileds
         //重置编辑表单数据
         this.editFormFileds[this.table.key] = row[this.table.key];
+
         this.resetEditForm(row);
         this.currentAction = this.const.EDIT;
         this.boxModel = true;
@@ -515,6 +540,8 @@ let methods = {
         this.initBox();
         this.resetDetailTable(row);
         this.setEditForm(row);
+        //设置远程查询表单的默认key/value
+        this.getRemoteFormDefaultKeyValue();
         //点击编辑按钮弹出框后，可以在此处写逻辑，如，从后台获取数据
         this.modelOpenProcess(row);
     },
@@ -546,7 +573,7 @@ let methods = {
     edit() {//编辑
         let rows = this.$refs.table.getSelected();
         if (rows.length == 0) {
-            return this.$message.error("请选择要编辑的行!");
+            return this.$error("请选择要编辑的行!");
         }
         //记录当前编辑的行
         this.currentRow = rows[0];
@@ -557,9 +584,30 @@ let methods = {
 
         //设置当前的数据到表单上
         this.setEditForm(rows[0]);
+        //设置远程查询表单的默认key/value
+        this.getRemoteFormDefaultKeyValue();
         //点击编辑按钮弹出框后，可以在此处写逻辑，如，从后台获取数据
         this.modelOpenProcess(rows[0]);
         // this.modelOpenAfter(rows[0]);
+    },
+    getRemoteFormDefaultKeyValue() {
+        //设置表单远程数据源的默认key.value
+        if (this.currentAction != this.const.EDIT || this.remoteKeys.length == 0) return;
+        this.editFormOptions.forEach((x, xIndex) => {
+            x.forEach((item,yIndex) => {
+                if (item.remote) {
+                    let column = this.columns.find(x => { return x.bind && x.bind.key == item.dataKey });
+                    if (!column) return;
+                    let key = this.currentRow[item.field];
+                    let obj = column.bind.data.find(x => { return x.key == key });
+                    // obj ? obj.value : key如果没有查到数据源，直接使用原数据
+                    item.data = [{ key: key, value: obj ? obj.value : key }];
+                    this.editFormOptions[xIndex].splice(yIndex, 1, item);
+                    // this.$set(item, 'data', [{ key: key + '', value: obj.value }])
+                    //  item.data = [{ key: key + '', value: obj.value }];
+                }
+            })
+        })
     },
     modelOpenProcess(row) {
         this.$nextTick(() => {
@@ -590,7 +638,7 @@ let methods = {
         xmlResquest.onload = function (oEvent) {
 
             if (xmlResquest.status != 200) {
-                this.$Message.error('下载文件出错了..');
+                this.$error('下载文件出错了..');
                 return
             }
             let content = xmlResquest.response;
@@ -616,7 +664,7 @@ let methods = {
         let $http = this.http;
         $http.post(url, param, "正在导出数据....").then(result => {
             if (!result.status) {
-                return this.$message.error(result.message);
+                return this.$error(result.message);
             }
             let path = this.getUrl(this.const.DOWNLOAD);
             path = path[0] == "/" ? path.substring(1) : path;
@@ -638,21 +686,21 @@ let methods = {
     },
     audit() {//审核弹出框
         let rows = this.$refs.table.getSelected();
-        if (rows.length == 0) return this.$message.error("请选择要审核的行!");
+        if (rows.length == 0) return this.$error("请选择要审核的行!");
         let checkStatus = rows.every(x => {
             return x.AuditStatus > 0;
         });
-        if (checkStatus) return this.$message.error("只能选择审核中的数据!");
+        if (checkStatus) return this.$error("只能选择审核中的数据!");
         this.auditParam.rows = rows.length;
         this.auditParam.model = true;
     },
     saveAudit() {//保存审核
         let rows = this.$refs.table.getSelected();
         if (this.auditParam.status == -1)
-            return this.$message.error("请选择审核结果!");
+            return this.$error("请选择审核结果!");
 
         if (rows.length != this.auditParam.rows)
-            return this.$message.error("所选数据已发生变化,请重新选择审数据!");
+            return this.$error("所选数据已发生变化,请重新选择审数据!");
 
         let keys = rows.map(x => {
             return x[this.table.key];
@@ -670,12 +718,12 @@ let methods = {
             if (!this.auditAfter(x, rows)) {
                 return;
             }
-            if (!x.status) return this.$Message.error(x.message);
+            if (!x.status) return this.$error(x.message);
             this.auditParam.rows = 0;
             this.auditParam.status = -1;
             this.auditParam.reason = '';
             this.auditParam.model = false;
-            this.$Message.info(x.message);
+            this.$success(x.message);
             this.refresh();
         });
     },
@@ -718,14 +766,30 @@ let methods = {
                     this.uploadfiled.push(d.field);
                 }
                 if (!d.dataKey) return true;
+                //开启远程搜索
+                if (d.remote) {
+                    this.remoteKeys.push(d.dataKey);
+                    d.data = [] //{ dicNo: d.dataKey, data: [] };
+                    return true;
+                }
+                // if (this.remoteKeys.indexOf(d.dataKey) != -1) {
+                //     d.remote = true;
+                //     d.data = [] //{ dicNo: d.dataKey, data: [] };
+                //     return true;
+                // }
                 if (keys.indexOf(d.dataKey) == -1) {
                     keys.push(d.dataKey);
                     //data:[defaultOption]
-                    this.dicKeys.push({ dicNo: d.dataKey, config: "", data: [] });
+                    this.dicKeys.push({ dicNo: d.dataKey, data: [], type: d.type });
                 }
-                d.data = this.dicKeys.filter(f => {
+                //2020.01.30移除内部表单formOptions数据源配置格式data.data，所有参数改为与组件api格式相同
+                Object.assign(d, this.dicKeys.filter(f => {
                     return f.dicNo == d.dataKey;
-                })[0];
+                })[0])
+                // d.data = [];
+                // d.data.push(... this.dicKeys.filter(f => {
+                //     return f.dicNo == d.dataKey;
+                // })[0].data);
             });
         });
     },
@@ -734,10 +798,14 @@ let methods = {
         if (!scoure || !(scoure instanceof Array)) return;
         scoure.forEach(item => {
             if (!item.bind || (item.bind.data && item.bind.data.length > 0)) return true;
+            let key = item.bind.key || item.bind.dicNo;
+            if (this.remoteKeys.indexOf(key) != -1) {
+                item.bind.remote = true;
+                return true;
+            }
             if (this.hasKeyField.indexOf(item.field) == -1) {
                 this.hasKeyField.push(item.field);
             }
-            let key = item.bind.key || item.bind.dicNo;
             var dic = dicKeys.filter(x => {
                 return x.dicNo == key;
             });
@@ -894,7 +962,19 @@ let methods = {
         if (!this.boxOptions.width) {
             this.boxOptions.width = clientWidth;
         }
-    }
+    },
+    $error(message) {
+        this.$Message.error({
+            content: message,
+            duration: 5
+        });
+    },
+    $success(message) {
+        this.$Message.success({
+            content: message,
+            duration: 3
+        });
+    },
 };
 //合并扩展方法
 methods = Object.assign(methods, detailMethods, serviceFilter);

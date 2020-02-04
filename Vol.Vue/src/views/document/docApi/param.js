@@ -10,8 +10,8 @@ let param = {
         { name: "disabled", desc: "是否只读", type: "bool", default: "false" },
         { name: "placeholder", desc: "标签提示文字", type: "string", default: "" },
         { name: "colSize", desc: "每行列的宽度，可选值:12,8,6,如果是12标签会占100%宽度", type: "number", default: "" },
-        { name: "formRules", desc: "表单字段的参数配置说明(数组的元素个数决定了表单每行显示的标签个数)", type: "array", default: "[]" },
-        { name: "{", desc: "表单字段formRules的参数配置说明", type: "", default: "" },
+        { name: "表单配置参数", desc: "表单字段的参数配置说明(数组的元素个数决定了表单每行显示的标签个数),配置实例参照【查看代码】", type: "array", default: "[]" },
+        { name: "[[{", desc: "表单字段formRules的参数配置说明", type: "", default: "" },
         { name: "dataKey", desc: "数据源字典编号(菜单->系统->下拉框绑定中的字典编号)", type: "string", default: "" },
         { name: "data", desc: "数据源，可以手动绑定格式[{key:1,value:'是'}],也可以自动绑定,自定绑定需要设置属性loadKey='true'", type: "array", default: "[]" },
         { name: "title", desc: "标签名称", type: "string", default: "" },
@@ -37,11 +37,19 @@ let param = {
                 if ($event.keyCode == 13) {}\
               }', type: "function", default: ""
         },
-        { name: "onChange", desc: "只有type=select才可以配置此属性", type: "function", default: "" },
+        { name: "onChange", desc: `type=select生效
+        <p>
+	onChange: (value, option) =&gt; {
+</p>
+<p>
+	}
+</p>`, type: "function", default: "" },
+        { name: "url", desc: "从指定后台url(例：api/xx/xx)远程搜索，(返回的数据格式:[{key:'x',value:'x1'}])，type=select生效", type: "bool", default: "false" },
+        { name: "remote", desc: "开启后台字典远程搜索(后台字典必须配置必须是自定sql)，type=select才会生效", type: "bool", default: "false" },
         { name: "extra", desc: '添加额外标签：  extra: {//显示图标 icon: "ios-search", //显示文本 text: "点击可触发事件",//触发事件 click: item => {}}', type: "string", default: "" },
         { name: "minRows", desc: "textarea标签最小高度", type: "number", default: "2" },
         { name: "maxRows", desc: "textarea标签最大高度", type: "number", default: "10" },
-        { name: "}", desc: "表单字段formRules的参数配置说明", type: "", default: "" },
+        { name: "}]]", desc: "表单字段formRules的参数配置说明", type: "", default: "" },
         { name: "表单重置", desc: "表单重置使用：this.$refs.你的ref名字.reset()", type: "", default: "" },
         { name: "表单验证", desc: "表单验证使用：this.$refs.你的ref名字.validate()，返回值bool", type: "", default: "" },
         { name: "数据槽slot", desc: "可以在表单的第一行第前使用<div name='header'></div>或最后一行<div name='footer'></div>", type: "", default: "" }],
@@ -69,6 +77,7 @@ let param = {
         { name: "height", desc: "table高度", type: "number", default: "" },
         { name: "max-height", desc: "table最大高度,如果设置了max-height属性，height属性将不会生效", type: "number", default: "" },
         { name: "single", desc: "是否只能单选", type: "number", default: "false" },
+        { name: "ck", desc: "是否显示checkbox", type: "bool", default: "true" },
         { name: "--", desc: "--", type: "--", default: "--" },
         { name: "pagination", desc: "分页参数", type: "json", default: "{ total: 0, size: 0, sortName: ''}" },
         { name: "{", desc: "", type: "", default: "" },
@@ -92,6 +101,7 @@ let param = {
         { name: "fixed", desc: "是否固定列", type: "bool", default: "false" },
         { name: "type", desc: "目前只有img,file(设置了此属性，点击即可下载文件),其他不需要设置", type: "string", default: "" },
         { name: "required", desc: "是否必填项(设置edit了属性才会生效)", type: "bool", default: "false" },
+        { name: "summary", desc: "是否显示统计求和,目前远程api返回的数据才有效，前台参照sellorder.js配置,后台可参照SellOrder表查询数据返回的格式", type: "bool", default: "false" },
         { name: "edit{", desc: "表格编辑配置", type: "json", default: "" },
         { name: "type", desc: "编辑创建的标签类型：number、decimal、text、datetime、date、switch、select", type: "", default: "" },
         { name: "min", desc: "type为number、decimal时验证最小值,其他验证长度", type: "number", default: "" },
@@ -171,6 +181,7 @@ let param = {
         { name: "load", desc: "页面打开后是否默认加载表格数据", type: "bool", default: "true" },
         { name: "activatedLoad", desc: "页面触发actived时是否刷新页面数据", type: "bool", default: "false" },
         { name: "hasDetail", desc: "是否有明细(如果有明细表就为true)", type: "bool", default: "false" },
+        { name: "summary", desc: "查询界面是否显示统计和求，设置为true需要实现后台SummaryExpress方法,可参照SellOrderService实现", type: "bool", default: "false" },
         {
             name: "detailOptions", desc: `<div class="cnblogs_code">
             <pre></pre>
@@ -203,7 +214,8 @@ let param = {
                     </span><span style="color: #008000;">//</span><span style="color: #008000;">结束编辑后</span>
                     endEditAfter: (row, column, index) =&gt;<span style="color: #000000;"> {
                       </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">true</span><span style="color: #000000;">;
-                    }
+                    }, 
+                    <span style="color: #008000;">summary:弹出框明细表是否显示统计和求，设置为true需要实现后台GetDetailSummary方法,可参照SellOrderService实现</span>, 
              }</span></pre>
             </div>
             <pre></pre>
@@ -404,7 +416,16 @@ let param = {
                     </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">true</span><span style="color: #000000;">;
                 },
                 addBefore(formData) { </span><span style="color: #008000;">//</span><span style="color: #008000;">新建保存前formData为对象，包括明细表</span>
-        
+                <div style="color: #008000;"> 
+                //formData格式：
+                // {
+                //&nbsp; &nbsp; &nbsp;mainData: { 主表字段1: 'x1', 主表字段2: 'x2' },
+                //&nbsp; &nbsp; &nbsp;detailData: [{ 明细表字段1: d1 }],
+                //&nbsp; &nbsp; &nbsp;delKeys: null //删除明细表行数据的id
+                // }
+                //如果需要同时提交其他数据到后台，请设置formData.extra=xxxx
+                //后台在表xxxxService.cs中重写Add方法即可从saveDataModel参数中拿到extra提交的对象
+                </div>
                     <span style="color: #0000ff;">this</span>.$Notice.success({ title: <span style="color: #0000ff;">this</span>.detailOptions.cnName + '新建前：', desc: '提前的数据：' +<span style="color: #000000;"> JSON.stringify(formData) });
                     </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">true</span><span style="color: #000000;">;
                 },
@@ -413,6 +434,16 @@ let param = {
                     </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">true</span><span style="color: #000000;">;
                 },
                 updateBefore(formData) { </span><span style="color: #008000;">//</span><span style="color: #008000;">编辑保存前formData为对象，包括明细表、删除行的Id</span>
+                    <div style="color: #008000;"> 
+                    //formData格式：
+                    // {
+                    //&nbsp; &nbsp; &nbsp;mainData: { 主表字段1: 'x1', 主表字段2: 'x2' },
+                    //&nbsp; &nbsp; &nbsp;detailData: [{ 明细表字段1: d1 }],
+                    //&nbsp; &nbsp; &nbsp;delKeys: null //删除明细表行数据的id
+                    // }
+                    //如果需要同时提交其他数据到后台，请设置formData.extra=xxxx
+                    //后台在表xxxxService.cs中重写update方法即可从saveDataModel参数中拿到extra提交的对象
+                    </div>
                     <span style="color: #0000ff;">this</span>.$Notice.success({ title: <span style="color: #0000ff;">this</span>.detailOptions.cnName + '编辑前：', desc: '提前的数据：' +<span style="color: #000000;"> JSON.stringify(formData) });
                     </span><span style="color: #008000;">//</span><span style="color: #008000;">获取扩展的modelFooter属性text</span>
                     console.log(<span style="color: #0000ff;">this</span><span style="color: #000000;">.$refs.modelFooter.text)

@@ -44,19 +44,42 @@
               <div
                 v-if="item.type=='select'||item.type=='selectList'||item.type=='drop'||item.type=='dropList'"
               >
+                <!--select绑定默认值时，如果设置了默认值，数据源也有数据，但没绑定上，问题在于key与默认值类型不一致，如:默认值是字符串，数据源的key是数字，类型不至会导致绑定失败-->
                 <div>
+                  <!-- {{ item.remote||item.url?"1":"0"}} -->
+                  <!-- 远程搜索 -->
+                  <!-- 从后台字典搜索remote  -->
                   <Select
+                    v-if="item.remote||item.url"
+                    :transfer="true"
+                    v-model="formFileds[item.field]"
+                    filterable
+                    remote
+                    @on-clear="()=>{onClear(item,formFileds)}"
+                    :remote-method="(val)=>{remoteSearch(item,formFileds,val)}"
+                    :loading="item.loading"
+                    :placeholder="item.placeholder?item.placeholder:( '请选择'+item.title)"
+                    @on-change="onRemoteChange(item,formFileds[item.field])"
+                    clearable
+                  >
+                    <Option
+                      v-for="(kv,kvIndex) in getData(item)"
+                      :key="kvIndex"
+                      :value="kv.key||''"
+                    >{{kv.value}}</Option>
+                  </Select>
+                  <Select
+                    v-else
                     :transfer="true"
                     v-model="formFileds[item.field]"
                     :multiple="(item.type=='select'||item.type=='drop')?false:true"
-                    :filterable="(item.filter||getData(item).length>10)?true:false"
+                    :filterable="(item.filter||item.length>10)?true:false"
                     :placeholder="item.placeholder?item.placeholder:( '请选择'+item.title)"
                     @on-change="onChange(item,formFileds[item.field])"
                     clearable
                   >
-                    <!-- :max-tag-count="2" -->
                     <Option
-                      v-for="(kv,kvIndex) in getData(item)"
+                      v-for="(kv,kvIndex) in item.data"
                       :key="kvIndex"
                       :value="kv.key||''"
                     >{{kv.value}}</Option>
@@ -90,7 +113,7 @@
               </Row>
               <CheckboxGroup v-else-if="item.type=='checkbox'" v-model="formFileds[item.field]">
                 <Checkbox
-                  v-for="(kv,kvIndex) in getData(item)"
+                  v-for="(kv,kvIndex) in item.data"
                   :key="kvIndex"
                   :label="kv.key"
                 >{{kv.value}}</Checkbox>
@@ -194,17 +217,13 @@ export default {
       default: {}
     }
   },
-  watch: {
-    formRules(newObject, oldObject) {
-      //if (!newObject) {}
-      this.initFormRules();
-    }
-  },
+  watch: {},
   created() {
     this.initFormRules(true);
   },
   data() {
     return {
+      remoteCall: true,
       errorImg: 'this.src="' + require("@/assets/imgs/error-img.png") + '"',
       rule: {
         change: ["checkbox", "select", "date", "datetime", "drop", "radio"],
@@ -343,12 +362,12 @@ export default {
       }
 
       if (!item.data) return text;
-      let data;
-      if (item.data.data) {
-        data = item.data.data;
-      } else {
-        data = item.data;
-      }
+      let data = item.data;
+      // if (item.data.data) {
+      //   data = item.data.data;
+      // } else {
+      //   data = item.data;
+      // }
       data.forEach(x => {
         if (x.key == text) {
           text = x.value;
@@ -356,16 +375,29 @@ export default {
       });
       return text;
     },
+    onClear(item, formFileds) {
+      //远程select标签清空选项
+      item.data.splice(0);
+      // console.log(2);
+    },
     onChange(item, value) {
       if (item.onChange && typeof item.onChange == "function") {
         item.onChange(value, item);
       }
     },
-    getData(item) {
-      if (item.data && item.data.data) {
-        return item.data.data;
+    onRemoteChange(item, value) {
+      //第二次打开时，默认值成了undefined，待查viewgrid中重置代码
+      if (value == undefined && item.data.length > 0) {
+        this.formFileds[item.field] = item.data[0].key;
+        //  console.log('undefined');
       }
-      return item.data || [];
+      this.remoteCall = false;
+      if (item.onChange && typeof item.onChange == "function") {
+        item.onChange(value, item);
+      }
+    },
+    getData(item) {
+      return item.data;
     },
     initSource() {
       let keys = [],
@@ -373,7 +405,7 @@ export default {
       //初始化字典数据源
       this.formRules.forEach(item => {
         item.forEach(x => {
-          if (x.dataKey && (!x.data || x.data.length == 0)) {
+          if (x.dataKey && (!x.data || x.data.length == 0) && !x.remote) {
             // if (!x.data)
             x.data = [];
             binds.push({ key: x.dataKey, data: x.data });
@@ -389,6 +421,26 @@ export default {
       this.http.post("/api/Sys_Dictionary/GetVueDictionary", keys).then(dic => {
         this.bindOptions(dic, binds);
       });
+    },
+    //远程搜索(打开弹出框时应该禁止搜索)
+    remoteSearch(item, formFileds, val) {
+      if (
+        val == "" ||
+        (item.data.length == 1 &&
+          (val == item.data[0].key || val == item.data[0].value))
+      )
+        return;
+      //弹出框或初始化表单时给data设置数组默认值
+      let url = item.remote
+        ? "/api/Sys_Dictionary/GetSearchDictionary"
+        : item.url;
+      this.http
+        .post(url + "?dicNo=" + item.dataKey + "&value=" + val)
+        .then(dicData => {
+          this.$set(item, "loading", false);
+          item.data = dicData;
+          this.formRules[item.point.x].splice(item.point.y, 1, item);
+        });
     },
     bindOptions(dic, binds) {
       dic.forEach(d => {
@@ -411,10 +463,6 @@ export default {
           }
         });
       });
-
-      // binds.forEach(x => {
-      //   x.data.push(...[]);
-      // });
     },
     getObject(date) {
       if (typeof date == "object") {
@@ -431,6 +479,8 @@ export default {
       return time + "";
     },
     reset(sourceObj) {
+      //重置表单时，禁用远程查询
+      //  this.remoteCall = false;
       this.$refs["formValidate"].resetFields();
       if (!sourceObj) return;
       for (const key in this.formFileds) {
@@ -438,6 +488,7 @@ export default {
           this.formFileds[key] = sourceObj[key];
         }
       }
+      //  this.remoteCall = true;
     },
     validate() {
       let result = false;
@@ -502,29 +553,24 @@ export default {
         this.initSource();
       }
       //  this.ruleValidate={};
-      this.formRules.forEach(row => {
+      this.formRules.forEach((row, xIndex) => {
         if (row.length > this.span) this.span = row.length;
-        row.forEach(item => {
+
+        row.forEach((item, yIndex) => {
+          //目前只支持select单选远程搜索，remote远程从后台字典数据源进行搜索，url从指定的url搜索
+          if (item.remote || item.url) {
+            // item.remoteData = [];
+            item.loading = false;
+            item.point = { x: xIndex, y: yIndex };
+          }
           //初始化上传文件信息
           this.initUpload(item, init);
           //初始化数据源空对象
           if (item.dataKey) {
             //下拉框都强制设置为字符串类型
             item.columnType = "string";
-            if (item.data && item.data instanceof Array) {
-              // item.data.forEach(x => {
-              //   x.key = x.key + "";
-              // });
-            } else {
-              if (!item.data) {
-                item.data = { data: [] };
-              } else if (!item.data.data) {
-                item.data.data = [];
-              }
-              //数据源的key为数字时，可能存在配置不统一，有的是数据有的是字符，此处统一转换成字符
-              // item.data.data.forEach(x => {
-              //   x.key = x.key //+ "";
-              // });
+            if (!item.data) {
+              item.data = [];
             }
           }
         });
@@ -713,7 +759,11 @@ export default {
       }
 
       //if (item.type == "checkbox" || item.type == "select") {
-      if (item.type == "select" ||item.type == "selectList" || item.type == "drop") {
+      if (
+        item.type == "select" ||
+        item.type == "selectList" ||
+        item.type == "drop"
+      ) {
         let _rule = {
           required: true,
           message: "请选择" + item.title,
